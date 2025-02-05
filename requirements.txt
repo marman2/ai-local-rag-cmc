@@ -3,6 +3,7 @@ uvicorn
 python-dotenv
 langchain
 langchain-community
+langchain-chroma
 pypdf
 tiktoken
 chromadb

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
@@ -98,7 +98,6 @@ embedding_model = OllamaEmbeddingWrapper(model=EMBEDDING_MODEL_NAME)
 # ------------------------------------------------------------------------------
 # Configure ChromaDB Client (running via Docker)
 client_settings = Settings(
-    chroma_api_impl="http",  # Changed from "rest" to "http"
     chroma_server_host=CHROMADB_HOST,
     chroma_server_http_port=CHROMADB_PORT,
 )

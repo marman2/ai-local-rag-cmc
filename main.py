@@ -46,22 +46,24 @@ CHROMADB_PORT = os.getenv("CHROMADB_PORT", "8000")
 # Ollama Wrappers using the official library
 
 class OllamaLLM(LLM):
-    """
-    A LangChain-compatible LLM wrapper that uses the Ollama library directly.
-    Assumes the Ollama library’s generate() returns a dict with an 'output' key.
-    """
-    def __init__(self, model: str, temperature: float = 0.0):
-        self.model = model
-        self.temperature = temperature
+    model: str
+    temperature: float = 0.0  # Default temperature is 0.0
 
     @property
     def _llm_type(self) -> str:
         return "ollama"
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "temperature": self.temperature,
+        }
+        if stop:
+            payload["stop"] = stop
         try:
+            # Using the official Ollama library call:
             result = ollama.generate(model=self.model, prompt=prompt, temperature=self.temperature)
-            # Expected: result is a dict with key 'output'
             return result.get("output", "")
         except Exception as e:
             logger.error("Error calling Ollama.generate: %s", e)

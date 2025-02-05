@@ -83,25 +83,22 @@ class OllamaLLM(LLM):
     def __call__(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         return self._call(prompt, stop)
 
-def _process_embedding(embedding):
+def process_embedding(embedding):
     """
-    Convert the embedding to a list of floats (or list of lists of floats).
-    This function assumes that embedding is a list (or nested list) of values
-    that can be converted to float.
+    Process the raw embedding returned from the API.
+
+    If the embedding is a list of one element that is itself a list,
+    then flatten it by one level (to get a flat list of numbers).
+    Then, convert all elements to floats.
     """
+    # If the embedding is a list with a single element and that element is a list,
+    # assume that the extra nesting should be removed.
+    if isinstance(embedding, list) and len(embedding) == 1 and isinstance(embedding[0], list):
+        embedding = embedding[0]
     try:
-        if isinstance(embedding, list):
-            # Check if the first element is a list (i.e. a list of lists)
-            if embedding and isinstance(embedding[0], list):
-                # Convert each sublist to a list of floats
-                return [[float(x) for x in sublist] for sublist in embedding]
-            else:
-                # Convert the single list to floats
-                return [float(x) for x in embedding]
-        else:
-            raise ValueError("Embedding is not a list.")
+        return [float(x) for x in embedding]
     except Exception as e:
-        logger.error("Error processing embedding: %s", e)
+        logger.error("Error converting embedding values to float: %s", e)
         raise e
 
 class OllamaEmbeddingWrapper:
@@ -109,6 +106,9 @@ class OllamaEmbeddingWrapper:
         self.model = model
 
     def __call__(self, text: str) -> List[float]:
+        """
+        Call the Ollama embed endpoint and return a flat list of floats.
+        """
         payload = {
             "model": self.model,
             "input": text
@@ -118,21 +118,27 @@ class OllamaEmbeddingWrapper:
             response = requests.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
-            # Check for both "embedding" and "embeddings" keys.
+            # The API may return the key "embedding" or "embeddings".
             raw_embedding = data.get("embedding") or data.get("embeddings")
             if raw_embedding is None:
                 raise ValueError("No embedding returned from Ollama.embed. Response was: " + str(data))
-            # Process the raw embedding into a proper list of floats (or list of lists of floats)
-            processed_embedding = _process_embedding(raw_embedding)
-            return processed_embedding
+            processed = process_embedding(raw_embedding)
+            return processed
         except Exception as e:
             logger.error("Error calling Ollama.embed: %s", e)
             raise e
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """
+        Given a list of texts, return a list where each element is a flat list of floats.
+        """
+        # Call the __call__ method for each text.
         return [self.__call__(text) for text in texts]
 
     def embed_query(self, text: str) -> List[float]:
+        """
+        For a query, return the same as __call__.
+        """
         return self.__call__(text)
 
 # Instantiate our Ollama wrappers:

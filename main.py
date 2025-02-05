@@ -73,23 +73,28 @@ class OllamaLLM(LLM):
         return self._call(prompt, stop)
 
 class OllamaEmbeddingWrapper:
-    """
-    A simple wrapper for embeddings using the Ollama library directly.
-    Assumes ollama.embed() returns a dict with key 'embedding' (a list of floats).
-    """
     def __init__(self, model: str):
         self.model = model
 
     def __call__(self, text: str) -> List[float]:
+        """Embed a single piece of text."""
         try:
             result = ollama.embed(model=self.model, input=text)
-            embedding = result.get("embedding", None)
+            embedding = result.get("embedding")
             if embedding is None:
                 raise ValueError("No embedding returned from Ollama.embed")
             return embedding
         except Exception as e:
             logger.error("Error calling Ollama.embed: %s", e)
             raise e
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of documents (texts)."""
+        return [self.__call__(text) for text in texts]
+
+    def embed_query(self, text: str) -> List[float]:
+        """Embed a query text. For this wrapper, it's the same as embedding a single document."""
+        return self.__call__(text)
 
 # Instantiate our Ollama wrappers:
 ollama_llm = OllamaLLM(model=LLM_MODEL_NAME, temperature=0.0)

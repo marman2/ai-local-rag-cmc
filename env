@@ -1,0 +1,5 @@
+LLM_MODEL_NAME=llama3.1
+EMBEDDING_MODEL_NAME=zylonai/multilingual-e5-large
+CHROMADB_HOST=localhost
+CHROMADB_PORT=8000
+UPLOADED_PDFS=uploaded_pdfs

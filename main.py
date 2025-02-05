@@ -83,6 +83,27 @@ class OllamaLLM(LLM):
     def __call__(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         return self._call(prompt, stop)
 
+def _process_embedding(embedding):
+    """
+    Convert the embedding to a list of floats (or list of lists of floats).
+    This function assumes that embedding is a list (or nested list) of values
+    that can be converted to float.
+    """
+    try:
+        if isinstance(embedding, list):
+            # Check if the first element is a list (i.e. a list of lists)
+            if embedding and isinstance(embedding[0], list):
+                # Convert each sublist to a list of floats
+                return [[float(x) for x in sublist] for sublist in embedding]
+            else:
+                # Convert the single list to floats
+                return [float(x) for x in embedding]
+        else:
+            raise ValueError("Embedding is not a list.")
+    except Exception as e:
+        logger.error("Error processing embedding: %s", e)
+        raise e
+
 class OllamaEmbeddingWrapper:
     def __init__(self, model: str):
         self.model = model
@@ -98,10 +119,12 @@ class OllamaEmbeddingWrapper:
             response.raise_for_status()
             data = response.json()
             # Check for both "embedding" and "embeddings" keys.
-            embedding = data.get("embedding") or data.get("embeddings")
-            if embedding is None:
+            raw_embedding = data.get("embedding") or data.get("embeddings")
+            if raw_embedding is None:
                 raise ValueError("No embedding returned from Ollama.embed. Response was: " + str(data))
-            return embedding
+            # Process the raw embedding into a proper list of floats (or list of lists of floats)
+            processed_embedding = _process_embedding(raw_embedding)
+            return processed_embedding
         except Exception as e:
             logger.error("Error calling Ollama.embed: %s", e)
             raise e

@@ -104,8 +104,9 @@ client_settings = Settings(
 # Initialize Chroma vector store with a collection named "docs"
 vectorstore = Chroma(
     collection_name="docs",
-    embedding_function=embedding_model,
+    embedding_function=embedding_model,  # your previously defined embedding wrapper
     client_settings=client_settings,
+    persist_directory="/tmp/chroma"
 )
 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={'k': 6})
 

@@ -313,4 +313,5 @@ def query_llm(request: QueryRequest, x_session_id: str = Depends(create_or_get_s
 # Run the application if executed as main
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run("main:app", host="0.0.0.0", port=5000, log_level="info")
+

@@ -9,3 +9,4 @@ tiktoken
 chromadb
 ollama
 requests
+python-multipart

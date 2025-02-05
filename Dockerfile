@@ -28,13 +28,16 @@ WORKDIR /app
 COPY --from=builder /app/venv ./venv
 COPY --from=builder /app .
 
+# Create the directory for PDFs and adjust permissions so the appuser can write there.
+RUN mkdir -p uploaded_pdfs && chown -R appuser:appuser uploaded_pdfs
+
 # Ensure the virtual environment is used
 ENV PATH="/app/venv/bin:$PATH"
 
 # Expose the port for Uvicorn
 EXPOSE 8000
 
-# Switch to non-root user
+# Switch to the non-root user
 USER appuser
 
 # Run the application

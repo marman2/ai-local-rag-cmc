@@ -22,6 +22,8 @@ from langchain.chains import LLMChain
 from langchain_core.output_parsers import StrOutputParser
 from langchain.llms.base import LLM
 
+import requests
+
 # For connecting to a remote ChromaDB instance:
 from chromadb.config import Settings
 
@@ -41,13 +43,15 @@ LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "mxbai-embed-large")
 CHROMADB_HOST = os.getenv("CHROMADB_HOST", "localhost")
 CHROMADB_PORT = os.getenv("CHROMADB_PORT", "8000")
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+
 
 # ------------------------------------------------------------------------------
 # Ollama Wrappers using the official library
 
 class OllamaLLM(LLM):
     model: str
-    temperature: float = 0.0  # Default temperature is 0.0
+    temperature: float = 0.0
 
     @property
     def _llm_type(self) -> str:
@@ -61,10 +65,12 @@ class OllamaLLM(LLM):
         }
         if stop:
             payload["stop"] = stop
+        url = f"{OLLAMA_API_URL}/generate"
         try:
-            # Using the official Ollama library call:
-            result = ollama.generate(model=self.model, prompt=prompt, temperature=self.temperature)
-            return result.get("output", "")
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("output", "")
         except Exception as e:
             logger.error("Error calling Ollama.generate: %s", e)
             raise e
@@ -77,10 +83,16 @@ class OllamaEmbeddingWrapper:
         self.model = model
 
     def __call__(self, text: str) -> List[float]:
-        """Embed a single piece of text."""
+        payload = {
+            "model": self.model,
+            "input": text
+        }
+        url = f"{OLLAMA_API_URL}/embed"
         try:
-            result = ollama.embed(model=self.model, input=text)
-            embedding = result.get("embedding")
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            embedding = data.get("embedding")
             if embedding is None:
                 raise ValueError("No embedding returned from Ollama.embed")
             return embedding
@@ -89,11 +101,9 @@ class OllamaEmbeddingWrapper:
             raise e
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed a list of documents (texts)."""
         return [self.__call__(text) for text in texts]
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed a query text. For this wrapper, it's the same as embedding a single document."""
         return self.__call__(text)
 
 # Instantiate our Ollama wrappers:

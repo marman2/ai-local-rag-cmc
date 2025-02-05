@@ -3,3 +3,4 @@ EMBEDDING_MODEL_NAME=zylonai/multilingual-e5-large
 CHROMADB_HOST=localhost
 CHROMADB_PORT=8000
 UPLOADED_PDFS=uploaded_pdfs
+OLLAMA_API_URL=http://host.docker.internal:11434

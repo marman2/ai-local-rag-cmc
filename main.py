@@ -62,6 +62,7 @@ class OllamaLLM(LLM):
             "model": self.model,
             "prompt": prompt,
             "temperature": self.temperature,
+            "stream": False  # Ensure that we get a single JSON response.
         }
         if stop:
             payload["stop"] = stop
@@ -70,7 +71,11 @@ class OllamaLLM(LLM):
             response = requests.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
-            return data.get("output", "")
+            # Check for the key "response" (used in your examples)
+            text = data.get("response") or data.get("output")
+            if not text:
+                raise ValueError("No generated text returned from Ollama.generate. Response was: " + str(data))
+            return text
         except Exception as e:
             logger.error("Error calling Ollama.generate: %s", e)
             raise e
@@ -92,9 +97,10 @@ class OllamaEmbeddingWrapper:
             response = requests.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
-            embedding = data.get("embedding")
+            # Check for both "embedding" and "embeddings" keys.
+            embedding = data.get("embedding") or data.get("embeddings")
             if embedding is None:
-                raise ValueError("No embedding returned from Ollama.embed")
+                raise ValueError("No embedding returned from Ollama.embed. Response was: " + str(data))
             return embedding
         except Exception as e:
             logger.error("Error calling Ollama.embed: %s", e)

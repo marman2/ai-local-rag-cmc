@@ -98,7 +98,7 @@ embedding_model = OllamaEmbeddingWrapper(model=EMBEDDING_MODEL_NAME)
 # ------------------------------------------------------------------------------
 # Configure ChromaDB Client (running via Docker)
 client_settings = Settings(
-    chroma_api_impl="rest",
+    chroma_api_impl="http",  # Changed from "rest" to "http"
     chroma_server_host=CHROMADB_HOST,
     chroma_server_http_port=CHROMADB_PORT,
 )

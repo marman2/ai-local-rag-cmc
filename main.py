@@ -196,7 +196,17 @@ When responding:
 2. Cite relevant documents as references.
 3. Do not add external information.
 
-Your answer should be clear, self-contained, and concise.
+**Example:**
+
+**Question:** Come devono essere valutate le attività e passività monetarie e non monetarie in valuta estera secondo gli ITAS?
+
+**Provided Documents:**
+1. Documento 1: "Gli elementi monetari in valuta estera devono essere convertiti nella valuta funzionale utilizzando il tasso di cambio di chiusura. Gli elementi non monetari valutati al costo storico devono essere convertiti utilizzando il tasso alla data dell'iscrizione iniziale."
+2. Documento 2: "Gli elementi non monetari valutati a valori correnti devono essere convertiti utilizzando il tasso di cambio alla data in cui è stato determinato il valore corrente. La valuta funzionale per le amministrazioni è l'euro, salvo eccezioni previste dalla legge."
+
+**Answer:** Gli elementi monetari in valuta estera devono essere convertiti nella valuta funzionale utilizzando il tasso di cambio di chiusura. Gli elementi non monetari valutati al costo storico usano il tasso alla data dell'iscrizione iniziale, mentre quelli valutati a valori correnti usano il tasso di cambio alla data della valutazione del valore corrente
+
+Your answer should be clear, self-contained, concise and in italian. Don' return text with something like <doc> inside. 
 """
 
 qa_prompt = ChatPromptTemplate.from_messages(

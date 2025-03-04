@@ -569,5 +569,5 @@ def delete_document(filename: str, current_user: dict = Depends(get_current_user
 # Run the application if executed as main
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=5002, log_level="info")
+    uvicorn.run("main:app", host="0.0.0.0", port=5000, log_level="info")
 

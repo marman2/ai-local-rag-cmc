@@ -28,8 +28,9 @@ WORKDIR /app
 COPY --from=builder /app/venv ./venv
 COPY --from=builder /app .
 
-# Create the directory for PDFs and adjust permissions
-RUN mkdir -p uploaded_pdfs && chown -R appuser:appuser uploaded_pdfs
+# Create the directories for PDFs and ChromaDB, and adjust permissions
+RUN mkdir -p uploaded_pdfs && chown -R appuser:appuser uploaded_pdfs && \
+    mkdir -p chroma_db && chown -R appuser:appuser chroma_db
 
 # Ensure the virtual environment is used
 ENV PATH="/app/venv/bin:$PATH"

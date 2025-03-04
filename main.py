@@ -22,6 +22,12 @@ from langchain.chains import LLMChain
 from langchain_core.output_parsers import StrOutputParser
 from langchain.llms.base import LLM
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+import jwt
+
 import requests
 
 # For connecting to a remote ChromaDB instance:
@@ -44,6 +50,71 @@ EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "mxbai-embed-large")
 CHROMADB_HOST = os.getenv("CHROMADB_HOST", "localhost")
 CHROMADB_PORT = os.getenv("CHROMADB_PORT", "8000")
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+
+# Load ChromaDB persistence directory from environment variable
+CHROMADB_PERSIST_DIR = os.getenv("CHROMADB_PERSIST_DIR", "./chroma_db")
+os.makedirs(CHROMADB_PERSIST_DIR, exist_ok=True)
+
+# ------------------------------------------------------------------------------
+# Authentication Configuration
+
+SECRET_KEY = "your_secret_key_here"  # Change this to a secure random key
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Token expires in 60 minutes
+
+# Simulated in-memory user database
+fake_users_db = {
+    "testuser": {
+        "username": "testuser",
+        "full_name": "Test User",
+        "hashed_password": "$2b$12$ZCMfg4khcBXTor88gYxOJeD92P55biVxFLWKsQGuh9EpNejTmIgZ.",  # Password: "test123"
+    }
+}
+
+# Password hashing utility
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# OAuth2 scheme for login
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+
+def get_user(username: str):
+    """Fetch user from in-memory database."""
+    return fake_users_db.get(username)
+
+
+def authenticate_user(username: str, password: str):
+    """Authenticate user and verify credentials."""
+    user = get_user(username)
+    if not user or not verify_password(password, user["hashed_password"]):
+        return False
+    return user
+
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    """Generate a JWT token."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """Verify JWT token and extract user information."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None or username not in fake_users_db:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return fake_users_db[username]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Could not validate token")
 
 
 # ------------------------------------------------------------------------------
@@ -156,8 +227,10 @@ vectorstore = Chroma(
     collection_name="docs",
     embedding_function=embedding_model,  # your previously defined embedding wrapper
     client_settings=client_settings,
-    persist_directory="/tmp/chroma"
+    persist_directory=CHROMADB_PERSIST_DIR
 )
+
+vectorstore.get()
 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={'k': 6})
 
 # ------------------------------------------------------------------------------
@@ -300,8 +373,56 @@ app.add_middleware(
 def read_root():
     return {"message": "Welcome to the Document QA API. Visit /docs for API documentation."}
 
+# ------------------------------------------------------------------------------
+# Authentication Endpoints
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+    full_name: str
+
+@app.get("/users", summary="Get list of users")
+def list_users(current_user: dict = Depends(get_current_user)):
+    """
+    Return a list of registered users.
+    Only non-sensitive information is returned.
+    """
+    users = [
+        {"username": user["username"], "full_name": user["full_name"]}
+        for user in fake_users_db.values()
+    ]
+    return {"users": users}
+
+
+@app.post("/register", summary="Register a new user")
+def register_user(user: UserRegister):
+    """Register a new user (in-memory)."""
+    if user.username in fake_users_db:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    hashed_password = pwd_context.hash(user.password)
+    fake_users_db[user.username] = {
+        "username": user.username,
+        "full_name": user.full_name,
+        "hashed_password": hashed_password,
+    }
+    return {"message": "User registered successfully"}
+
+
+@app.post("/login", summary="Login to get an access token")
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login and return JWT access token."""
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    access_token = create_access_token(
+        data={"sub": user["username"]}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/add_document", summary="Upload and add a PDF document to the index")
-def add_document(file: UploadFile = File(...)):
+def add_document(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     logger.info("Received file upload: %s", file.filename)
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -371,9 +492,82 @@ def query_llm(request: QueryRequest, x_session_id: str = Depends(create_or_get_s
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
 
+@app.get("/list_documents", summary="List all stored documents")
+def list_documents():
+    try:
+        # Retrieve all stored document entries with metadata
+        all_docs = vectorstore.get(include=["documents", "metadatas"])
+
+        # Validate that expected keys exist in the response
+        if not all_docs or "documents" not in all_docs or "metadatas" not in all_docs:
+            raise HTTPException(status_code=404, detail="No documents found in the vector store.")
+
+        # Extract documents and metadata
+        documents = all_docs["documents"] or []
+        metadatas = all_docs["metadatas"] or []
+
+        # Ensure both lists are the same length
+        if len(documents) != len(metadatas):
+            raise HTTPException(status_code=500, detail="Mismatch between documents and metadata.")
+
+        # Format the response properly
+        document_list = [
+            {
+                "source": metadata.get("source", "Unknown"),
+                "page_number": metadata.get("page_number", "Unknown"),
+                "content": doc[:200]  # Preview first 200 characters
+            }
+            for doc, metadata in zip(documents, metadatas)
+        ]
+
+        return {"documents": document_list}
+
+    except Exception as e:
+        logger.error("Error retrieving document list: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve document list.")
+
+
+@app.delete("/delete_document/{filename}", summary="Delete a specific document from the vector store")
+def delete_document(filename: str, current_user: dict = Depends(get_current_user)):
+    try:
+        # Retrieve documents and metadata explicitly
+        all_docs = vectorstore.get(include=["documents", "metadatas", "ids"])
+
+        if not all_docs or "documents" not in all_docs or "metadatas" not in all_docs or "ids" not in all_docs:
+            raise HTTPException(status_code=404, detail="No documents found in the vector store.")
+
+        # Extract relevant data
+        documents = all_docs["documents"] or []
+        metadatas = all_docs["metadatas"] or []
+        doc_ids = all_docs["ids"] or []
+
+        # Ensure consistency
+        if len(documents) != len(metadatas) or len(documents) != len(doc_ids):
+            raise HTTPException(status_code=500, detail="Mismatch between documents, metadata, and IDs.")
+
+        # Identify document IDs to delete based on filename match
+        doc_ids_to_delete = [
+            doc_id for doc_id, metadata in zip(doc_ids, metadatas)
+            if metadata.get("source") == filename
+        ]
+
+        if not doc_ids_to_delete:
+            raise HTTPException(status_code=404, detail=f"No documents found for filename: {filename}")
+
+        # Remove documents from vector store
+        vectorstore.delete(doc_ids_to_delete)
+
+        return {"message": f"Successfully deleted {len(doc_ids_to_delete)} documents from {filename}"}
+
+    except Exception as e:
+        logger.error("Error deleting document: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to delete document.")
+
+
+
 # ------------------------------------------------------------------------------
 # Run the application if executed as main
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=5000, log_level="info")
+    uvicorn.run("main:app", host="0.0.0.0", port=5002, log_level="info")
 

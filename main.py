@@ -545,29 +545,31 @@ def list_documents():
 @app.delete("/delete_document/{filename}", summary="Delete a specific document from the vector store and static folder")
 def delete_document(filename: str, current_user: dict = Depends(get_current_user)):
     try:
-        # Retrieve documents and metadata explicitly
-        all_docs = vectorstore.get(include=["documents", "metadatas", "ids"])
+        # Retrieve all stored document entries with metadata (do not include "ids")
+        all_docs = vectorstore.get(include=["documents", "metadatas"])
 
-        if not all_docs or "documents" not in all_docs or "metadatas" not in all_docs or "ids" not in all_docs:
+        if not all_docs or "documents" not in all_docs or "metadatas" not in all_docs:
             raise HTTPException(status_code=404, detail="No documents found in the vector store.")
 
-        # Extract relevant data
+        # Extract documents and metadata
         documents = all_docs["documents"] or []
         metadatas = all_docs["metadatas"] or []
-        doc_ids = all_docs["ids"] or []
 
-        # Ensure consistency
-        if len(documents) != len(metadatas) or len(documents) != len(doc_ids):
-            raise HTTPException(status_code=500, detail="Mismatch between documents, metadata, and IDs.")
+        # Ensure both lists are the same length
+        if len(documents) != len(metadatas):
+            raise HTTPException(status_code=500, detail="Mismatch between documents and metadata.")
 
-        # Identify document IDs to delete based on filename match
-        doc_ids_to_delete = [
-            doc_id for doc_id, metadata in zip(doc_ids, metadatas)
+        # Identify document indexes to delete based on filename match
+        doc_indexes_to_delete = [
+            i for i, metadata in enumerate(metadatas)
             if metadata.get("source") == filename
         ]
 
-        if not doc_ids_to_delete:
+        if not doc_indexes_to_delete:
             raise HTTPException(status_code=404, detail=f"No documents found for filename: {filename}")
+
+        # Get document IDs using indexes
+        doc_ids_to_delete = [all_docs["ids"][i] for i in doc_indexes_to_delete]
 
         # Remove documents from vector store
         vectorstore.delete(doc_ids_to_delete)
@@ -587,8 +589,6 @@ def delete_document(filename: str, current_user: dict = Depends(get_current_user
     except Exception as e:
         logger.error("Error deleting document: %s", e)
         raise HTTPException(status_code=500, detail="Failed to delete document.")
-
-
 
 
 # ------------------------------------------------------------------------------

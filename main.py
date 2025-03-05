@@ -421,23 +421,34 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+
+from fastapi.staticfiles import StaticFiles
+
+# Serve static files (PDFs) from 'uploaded_pdfs' directory
+app.mount("/pdfs", StaticFiles(directory=PDF_STORAGE_DIR), name="pdfs")
+
+
 @app.post("/add_document", summary="Upload and add a PDF document to the index")
 def add_document(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     logger.info("Received file upload: %s", file.filename)
+
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
     file_path = os.path.join(PDF_STORAGE_DIR, file.filename)
+
     try:
-        # Save uploaded file
+        # Save uploaded file with its original filename
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+
+        logger.info("File successfully saved at: %s", file_path)
 
         # Load PDF and split into pages
         loader = PyPDFLoader(file_path)
         docs = loader.load()
         for page_num, doc in enumerate(docs):
-            doc.metadata['source'] = file.filename
+            doc.metadata['source'] = file.filename  # Use original filename as reference
             doc.metadata['page_number'] = page_num + 1
 
         # Split long documents into chunks
@@ -449,12 +460,16 @@ def add_document(file: UploadFile = File(...), current_user: dict = Depends(get_
 
         logger.info("Adding %d document chunks to vector store", len(doc_splits))
         vectorstore.add_documents(doc_splits)
+
     except Exception as e:
         logger.error("Error processing PDF: %s", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
 
-    return {"message": f"Successfully added {file.filename}"}
+    return {
+        "message": f"Successfully added {file.filename}"
+    }
+
 
 @app.post("/query", response_model=QueryResponse, summary="Query the LLM model")
 def query_llm(request: QueryRequest, x_session_id: str = Depends(create_or_get_session_id)):

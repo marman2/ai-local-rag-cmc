@@ -542,7 +542,7 @@ def list_documents():
         raise HTTPException(status_code=500, detail="Failed to retrieve document list.")
 
 
-@app.delete("/delete_document/{filename}", summary="Delete a specific document from the vector store")
+@app.delete("/delete_document/{filename}", summary="Delete a specific document from the vector store and static folder")
 def delete_document(filename: str, current_user: dict = Depends(get_current_user)):
     try:
         # Retrieve documents and metadata explicitly
@@ -572,11 +572,22 @@ def delete_document(filename: str, current_user: dict = Depends(get_current_user
         # Remove documents from vector store
         vectorstore.delete(doc_ids_to_delete)
 
-        return {"message": f"Successfully deleted {len(doc_ids_to_delete)} documents from {filename}"}
+        # Construct file path
+        file_path = os.path.join(PDF_STORAGE_DIR, filename)
+
+        # Check if file exists and delete it
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info("Successfully deleted file: %s", file_path)
+        else:
+            logger.warning("File not found: %s", file_path)
+
+        return {"message": f"Successfully deleted {len(doc_ids_to_delete)} documents and the file {filename}"}
 
     except Exception as e:
         logger.error("Error deleting document: %s", e)
         raise HTTPException(status_code=500, detail="Failed to delete document.")
+
 
 
 
